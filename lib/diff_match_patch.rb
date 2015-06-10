@@ -237,9 +237,9 @@ class DiffMatchPatch
       chars = ''
       text.each_line do |line|
         if line_hash[line]
-          chars += [line_hash[line]].pack('U*')
+          chars += [line_hash[line]].pack('U')
         else
-          chars += [line_array.length].pack('U*')
+          chars += [line_array.length].pack('U')
           line_hash[line] = line_array.length
           line_array.push(line)
         end
@@ -1399,7 +1399,7 @@ class DiffMatchPatch
   # something. Intended to be called only from within patch_apply.
   def patch_addPadding(patches)
     padding_length = patch_margin
-    null_padding = (1..padding_length).map{ |x| [x].pack('U*')}.join
+    null_padding = (1..padding_length).map{ |x| [x].pack('U')}.join
   
     # Bump all the patches forward.
     patches.each do |patch|
