@@ -1,6 +1,14 @@
 require 'diff_methods'
 require 'patch_obj'
 
+#http://po-ru.com/diary/fixing-invalid-utf-8-in-ruby-revisited/
+require 'iconv'
+class String
+  def force_to_utf8
+    ::Iconv.conv('UTF-8//IGNORE', 'UTF-8', self + ' ')[0..-2]
+  end
+end
+
 # Class containing the diff, match and patch methods.
 # Also contains the behaviour settings.
 class DiffMatchPatch
@@ -229,9 +237,9 @@ class DiffMatchPatch
       chars = ''
       text.each_line do |line|
         if line_hash[line]
-          chars += line_hash[line].chr(Encoding::UTF_8)
+          chars += [line_hash[line]].pack('C*')
         else
-          chars += line_array.length.chr(Encoding::UTF_8)
+          chars += [line_array.length].pack('C*')
           line_hash[line] = line_array.length
           line_array.push(line)
         end
@@ -518,14 +526,15 @@ class DiffMatchPatch
     # the choice has been made to use each language's native features
     # rather than force total conformity.
     score = 0
+
     # One point for non-alphanumeric.
-    if one[-1] =~ nonWordCharacter || two[0] =~ nonWordCharacter
+    if one[-1..-1] =~ nonWordCharacter || two[0..0] =~ nonWordCharacter
       score += 1
       # Two points for whitespace.
-      if one[-1] =~ whitespace || two[0] =~ whitespace
+      if one[-1..-1] =~ whitespace || two[0..0] =~ whitespace
         score += 1
         # Three points for line breaks.
-        if one[-1] =~ linebreak || two[0] =~ linebreak
+        if one[-1..-1] =~ linebreak || two[0..0] =~ linebreak
           score += 1
           # Four points for blank lines.
           if one =~ lineEnd || two =~ lineStart
@@ -567,8 +576,8 @@ class DiffMatchPatch
         best_score = diff_cleanupSemanticScore(equality1, edit) +
           diff_cleanupSemanticScore(edit, equality2)
         while edit[0] == equality2[0]
-          equality1 += edit[0]
-          edit = edit[1..-1] + equality2[0]
+          equality1 += edit[0..0].to_s
+          edit = edit[1..-1] + equality2[0..0].to_s
           equality2 = equality2[1..-1]
           score = diff_cleanupSemanticScore(equality1, edit) +
             diff_cleanupSemanticScore(edit, equality2)
@@ -914,7 +923,7 @@ class DiffMatchPatch
       param = token[1..-1]
       case token[0]
         when '+'
-          diffs.push([:insert, URI.decode(param.force_encoding(Encoding::UTF_8))])
+          diffs.push([:insert, URI.decode(param.force_to_utf8)])
         when '-', '='
           begin
             n = Integer(param)
@@ -977,7 +986,7 @@ class DiffMatchPatch
     s = match_alphabet(pattern)
 
     # Compute and return the score for a match with e errors and x location.
-    match_bitapScore = -> e, x do
+    def match_bitapScore(e, x)
       accuracy = e.to_f / pattern.length
       proximity = (loc - x).abs
       if match_distance == 0
@@ -992,11 +1001,11 @@ class DiffMatchPatch
     # Is there a nearby exact match? (speedup)
     best_loc = text.index(pattern, loc)
     if best_loc
-      score_threshold = [match_bitapScore[0, best_loc], score_threshold].min
+      score_threshold = [match_bitapScore(0, best_loc), score_threshold].min
       # What about in the other direction? (speedup)
       best_loc = text.rindex(pattern, loc + pattern.length)
       if best_loc
-        score_threshold = [match_bitapScore[0, best_loc], score_threshold].min
+        score_threshold = [match_bitapScore(0, best_loc), score_threshold].min
       end
     end
   
@@ -1014,7 +1023,7 @@ class DiffMatchPatch
       bin_min = 0
       bin_mid = bin_max
       while bin_min < bin_mid
-        if match_bitapScore[d, loc + bin_mid] <= score_threshold
+        if match_bitapScore(d, loc + bin_mid) <= score_threshold
           bin_min = bin_mid
         else
           bin_max = bin_mid
@@ -1038,7 +1047,7 @@ class DiffMatchPatch
             (((last_rd[j + 1] | last_rd[j]) << 1) | 1) | last_rd[j + 1]
         end
         if (rd[j] & match_mask).nonzero?
-          score = match_bitapScore[d, j - 1]
+          score = match_bitapScore(d, j - 1)
           # This match will almost certainly be better than any existing match.
           # But check anyway.
           if score <= score_threshold
@@ -1057,7 +1066,7 @@ class DiffMatchPatch
       end
 
       # No hope for a (better) match at greater error levels.
-      if match_bitapScore[d + 1, loc] > score_threshold
+      if match_bitapScore(d + 1, loc) > score_threshold
         break
       end
       last_rd = rd
@@ -1123,7 +1132,7 @@ class DiffMatchPatch
         end
 
         sign = text[text_pointer][0]
-        line = URI.decode(text[text_pointer][1..-1].force_encoding(Encoding::UTF_8))
+        line = URI.decode(text[text_pointer][1..-1].force_to_utf8)
 
         case sign
         when '-'
@@ -1390,7 +1399,7 @@ class DiffMatchPatch
   # something. Intended to be called only from within patch_apply.
   def patch_addPadding(patches)
     padding_length = patch_margin
-    null_padding = (1..padding_length).map{ |x| x.chr(Encoding::UTF_8) }.join
+    null_padding = (1..padding_length).map{ |x| [x].pack('C*')}.join
   
     # Bump all the patches forward.
     patches.each do |patch|
