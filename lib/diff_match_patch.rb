@@ -237,9 +237,9 @@ class DiffMatchPatch
       chars = ''
       text.each_line do |line|
         if line_hash[line]
-          chars += [line_hash[line]].pack('C*')
+          chars += [line_hash[line]].pack('U*')
         else
-          chars += [line_array.length].pack('C*')
+          chars += [line_array.length].pack('U*')
           line_hash[line] = line_array.length
           line_array.push(line)
         end
@@ -986,7 +986,7 @@ class DiffMatchPatch
     s = match_alphabet(pattern)
 
     # Compute and return the score for a match with e errors and x location.
-    def match_bitapScore(e, x)
+    match_bitapScore = lambda do |e, x|
       accuracy = e.to_f / pattern.length
       proximity = (loc - x).abs
       if match_distance == 0
@@ -1001,11 +1001,11 @@ class DiffMatchPatch
     # Is there a nearby exact match? (speedup)
     best_loc = text.index(pattern, loc)
     if best_loc
-      score_threshold = [match_bitapScore(0, best_loc), score_threshold].min
+      score_threshold = [match_bitapScore.call(0, best_loc), score_threshold].min
       # What about in the other direction? (speedup)
       best_loc = text.rindex(pattern, loc + pattern.length)
       if best_loc
-        score_threshold = [match_bitapScore(0, best_loc), score_threshold].min
+        score_threshold = [match_bitapScore.call(0, best_loc), score_threshold].min
       end
     end
   
@@ -1023,7 +1023,7 @@ class DiffMatchPatch
       bin_min = 0
       bin_mid = bin_max
       while bin_min < bin_mid
-        if match_bitapScore(d, loc + bin_mid) <= score_threshold
+        if match_bitapScore.call(d, loc + bin_mid) <= score_threshold
           bin_min = bin_mid
         else
           bin_max = bin_mid
@@ -1047,7 +1047,7 @@ class DiffMatchPatch
             (((last_rd[j + 1] | last_rd[j]) << 1) | 1) | last_rd[j + 1]
         end
         if (rd[j] & match_mask).nonzero?
-          score = match_bitapScore(d, j - 1)
+          score = match_bitapScore.call(d, j - 1)
           # This match will almost certainly be better than any existing match.
           # But check anyway.
           if score <= score_threshold
@@ -1066,7 +1066,7 @@ class DiffMatchPatch
       end
 
       # No hope for a (better) match at greater error levels.
-      if match_bitapScore(d + 1, loc) > score_threshold
+      if match_bitapScore.call(d + 1, loc) > score_threshold
         break
       end
       last_rd = rd
@@ -1399,7 +1399,7 @@ class DiffMatchPatch
   # something. Intended to be called only from within patch_apply.
   def patch_addPadding(patches)
     padding_length = patch_margin
-    null_padding = (1..padding_length).map{ |x| [x].pack('C*')}.join
+    null_padding = (1..padding_length).map{ |x| [x].pack('U*')}.join
   
     # Bump all the patches forward.
     patches.each do |patch|
